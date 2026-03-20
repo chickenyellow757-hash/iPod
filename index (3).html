@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Ultimate iPod</title>
+
+<link href="https://fonts.cdnfonts.com/css/sf-pro-display" rel="stylesheet">
+
+<style>
+body{
+background:#ffffff;
+display:flex;
+justify-content:center;
+align-items:center;
+height:100vh;
+font-family:'SF Pro Display', -apple-system;
+position:relative;
+}
+
+/* SHADOW */
+body::after{
+content:"";
+position:absolute;
+bottom:40px;
+width:200px;
+height:40px;
+background:radial-gradient(rgba(0,0,0,0.2),transparent);
+filter:blur(12px);
+}
+
+:root{
+--body:#f5f5f5;
+--accent:#2f6edb;
+}
+
+.ipod{
+width:260px;height:520px;
+border-radius:30px;
+background:var(--body);
+box-shadow:0 30px 60px rgba(0,0,0,0.35);
+padding-top:20px;
+position:relative;
+overflow:hidden;
+}
+
+/* REALISTIC REFLECTION */
+.ipod::before{
+content:"";
+position:absolute;
+top:0;
+left:0;
+width:100%;
+height:35%;
+border-radius:30px;
+background:linear-gradient(
+to bottom,
+rgba(255,255,255,0.25) 0%,
+rgba(255,255,255,0.1) 30%,
+transparent 65%
+);
+pointer-events:none;
+}
+
+.ipod::after{
+content:"";
+position:absolute;
+top:0;
+left:0;
+width:100%;
+height:20%;
+border-radius:30px;
+background:linear-gradient(
+to bottom,
+rgba(255,255,255,0.15),
+transparent
+);
+pointer-events:none;
+}
+
+.screen{
+width:210px;height:160px;
+margin:auto;
+border:3px solid #333;
+background:#eaeaea;
+overflow:hidden;
+display:flex;
+flex-direction:column;
+}
+
+.topbar{
+display:flex;
+justify-content:space-between;
+font-size:11px;
+padding:2px 6px;
+}
+
+.header{
+background:var(--accent);
+color:#fff;
+text-align:center;
+font-size:13px;
+flex-shrink:0;
+}
+
+.list{
+flex:1;
+overflow:hidden;
+position:relative;
+}
+
+.list-inner{
+position:absolute;
+top:0;
+width:100%;
+}
+
+.sel{
+background:var(--accent);
+color:#fff;
+padding:5px;
+}
+
+.progress{height:5px;background:#ccc;margin:5px;}
+.bar{height:100%;background:var(--accent);}
+.time{display:flex;justify-content:space-between;font-size:11px;padding:0 5px;}
+
+.wheel{
+margin:25px auto;
+width:200px;height:200px;
+background:#eee;
+border-radius:50%;
+position:relative;
+touch-action:none;
+}
+
+.center{width:80px;height:80px;background:#ddd;border-radius:50%;position:absolute;top:60px;left:60px;}
+.menuBtn{position:absolute;top:15px;left:80px;}
+.playBtn{position:absolute;bottom:15px;left:85px;}
+.leftBtn{position:absolute;top:95px;left:15px;}
+.rightBtn{position:absolute;top:95px;right:15px;}
+</style>
+</head>
+
+<body>
+
+<div class="ipod">
+
+<div class="screen">
+<div class="topbar">
+<span id="clock"></span>
+<span id="battery">100%</span>
+</div>
+
+<div class="header" id="header">iPod</div>
+<div class="list">
+<div class="list-inner" id="content"></div>
+</div>
+</div>
+
+<div class="wheel" id="wheel">
+<div class="menuBtn" id="menuBtn">MENU</div>
+<div class="playBtn" id="playBtn">▶⏸</div>
+<div class="leftBtn" id="prevBtn">⏮</div>
+<div class="rightBtn" id="nextBtn">⏭</div>
+<div class="center" id="centerBtn"></div>
+</div>
+
+<input type="file" id="files" multiple hidden>
+
+</div>
+
+<script>
+
+/* CLICK SOUND */
+let clickSound = new Audio("https://www.soundjay.com/buttons/sounds/button-16.mp3")
+function click(){ 
+  clickSound.currentTime = 0
+  clickSound.play()
+}
+
+/* CLOCK */
+setInterval(()=>{
+let d=new Date()
+clock.textContent=d.getHours()+":"+(d.getMinutes()+"").padStart(2,"0")
+},1000)
+
+/* AUDIO */
+let audio=new Audio()
+let songs=[],cur=0
+
+audio.onended=()=>next()
+
+function play(i){
+cur=i
+audio.src=songs[i].url
+audio.play()
+screen="now"
+render()
+}
+
+function toggle(){audio.paused?audio.play():audio.pause()}
+function next(){if(songs.length)play((cur+1)%songs.length)}
+function prev(){if(songs.length)play((cur-1+songs.length)%songs.length)}
+
+/* DATABASE */
+let db
+let req=indexedDB.open("iPodDB",1)
+
+req.onupgradeneeded=e=>{
+db=e.target.result
+db.createObjectStore("songs",{autoIncrement:true})
+}
+
+req.onsuccess=e=>{
+db=e.target.result
+loadSavedSongs()
+}
+
+function saveSong(file){
+db.transaction("songs","readwrite").objectStore("songs").add(file)
+}
+
+function loadSavedSongs(){
+let store=db.transaction("songs","readonly").objectStore("songs")
+
+store.openCursor().onsuccess=e=>{
+let cursor=e.target.result
+if(cursor){
+let file=cursor.value
+songs.push({name:file.name.replace(".mp3",""),url:URL.createObjectURL(file)})
+cursor.continue()
+}else render()
+}
+}
+
+/* DELETE */
+function deleteSong(index){
+let store=db.transaction("songs","readwrite").objectStore("songs")
+let count=0
+
+store.openCursor().onsuccess=e=>{
+let cursor=e.target.result
+if(cursor){
+if(count===index) cursor.delete()
+count++
+cursor.continue()
+}else{
+songs.splice(index,1)
+screen="songs"
+sel=0
+render()
+}
+}
+}
+
+/* IMPORT */
+files.onchange=e=>{
+for(let f of e.target.files){
+saveSong(f)
+songs.push({name:f.name.replace(".mp3",""),url:URL.createObjectURL(f)})
+}
+render()
+}
+
+/* THEMES */
+let themes={
+Default:{body:"#f5f5f5",accent:"#2f6edb"},
+Black:{body:"#111",accent:"#fff"},
+Blue:{body:"#dbeafe",accent:"#2563eb"},
+Green:{body:"#dcfce7",accent:"#16a34a"},
+Pink:{body:"#ffe4e6",accent:"#db2777"},
+Silver:{body:"#e5e7eb",accent:"#6b7280"},
+Red:{body:"#fee2e2",accent:"#dc2626"},
+U2:{body:"#000",accent:"#ff0000"}
+}
+
+function setTheme(name){
+let t=themes[name]
+document.documentElement.style.setProperty("--body",t.body)
+document.documentElement.style.setProperty("--accent",t.accent)
+}
+
+/* MENU */
+let screen="menu",sel=0,scroll=0,deleteIndex=null
+
+function data(){
+if(screen==="menu") return ["Music","Settings"]
+if(screen==="music") return ["Songs"]
+if(screen==="songs") return songs.map(s=>s.name)
+if(screen==="settings") return ["Import Music","Themes"]
+if(screen==="themes") return Object.keys(themes)
+if(screen==="delete") return ["Cancel","Delete"]
+}
+
+/* RENDER */
+function render(){
+content.innerHTML=""
+header.textContent=screen==="now"?"Now Playing":"iPod"
+
+if(screen==="now"){
+let t=audio.currentTime||0
+let d=audio.duration||1
+content.innerHTML=`
+<div>${songs[cur]?.name||""}</div>
+<div class="progress"><div class="bar" style="width:${(t/d)*100}%"></div></div>
+<div class="time"><span>${fmt(t)}</span><span>-${fmt(d-t)}</span></div>`
+return
+}
+
+let items=data()
+
+items.forEach((item,i)=>{
+let div=document.createElement("div")
+div.textContent=item
+div.className=i===sel?"sel":""
+content.appendChild(div)
+})
+
+let itemHeight=24
+let maxVisible=6
+
+if(sel>=scroll+maxVisible) scroll=sel-maxVisible+1
+if(sel<scroll) scroll=sel
+
+content.style.top=-(scroll*itemHeight)+"px"
+}
+
+function fmt(s){
+let m=Math.floor(s/60)
+let sec=Math.floor(s%60).toString().padStart(2,"0")
+return m+":"+sec
+}
+
+/* SELECT */
+function select(){
+click()
+
+let item=data()[sel]
+
+if(screen==="menu"){
+screen=item==="Music"?"music":"settings";sel=0
+}
+else if(screen==="music"){screen="songs";sel=0}
+else if(screen==="songs"){play(sel)}
+else if(screen==="settings"){
+if(item==="Import Music") files.click()
+if(item==="Themes"){screen="themes";sel=0}
+}
+else if(screen==="themes"){
+setTheme(item)
+screen="settings"
+}
+else if(screen==="delete"){
+if(sel===1) deleteSong(deleteIndex)
+else screen="songs"
+sel=0
+}
+
+render()
+}
+
+/* HOLD DELETE */
+let holdTimer=null
+
+centerBtn.onpointerdown=()=>{
+holdTimer=setTimeout(()=>{
+if(screen==="songs" && songs.length){
+deleteIndex=sel
+screen="delete"
+sel=0
+render()
+}
+},700)
+}
+
+centerBtn.onpointerup=()=>clearTimeout(holdTimer)
+centerBtn.onpointerleave=()=>clearTimeout(holdTimer)
+
+/* WHEEL */
+let last=0,drag=false
+
+wheel.onpointerdown=e=>{
+drag=true
+let r=wheel.getBoundingClientRect()
+last=Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2))
+}
+
+wheel.onpointermove=e=>{
+if(!drag)return
+let r=wheel.getBoundingClientRect()
+let a=Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2))
+let d=a-last
+
+if(Math.abs(d)>0.15){
+sel+=d>0?1:-1
+let len=data().length
+if(sel<0) sel=len-1
+if(sel>=len) sel=0
+click()
+render()
+last=a
+}
+}
+
+wheel.onpointerup=()=>drag=false
+
+/* BUTTONS */
+centerBtn.onclick=select
+menuBtn.onclick=()=>{click();screen="menu";sel=0;render()}
+playBtn.onclick=()=>{click();toggle()}
+nextBtn.onclick=()=>{click();next()}
+prevBtn.onclick=()=>{click();prev()}
+
+setInterval(()=>{if(screen==="now")render()},500)
+
+render()
+
+</script>
+</body>
+</html>
